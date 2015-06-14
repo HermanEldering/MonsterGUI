@@ -194,6 +194,10 @@ namespace MonsterGUI
 			goldLaneCheck.Checked = status;
 			respawnerCheck.Checked = status;
 			supportAbilitiesCheck.Checked = status;
+			bossLaneCheck.Checked = status;
+			targetSpawnerCheck.Checked = status;
+			ovenzifCheck.Checked = status;
+			itemsCheck.Checked = status;
 		}
 
 		private void presetEverythingOff_Click(object sender, EventArgs e)
@@ -204,6 +208,26 @@ namespace MonsterGUI
 		private void presetEverythingON_Click(object sender, EventArgs e)
 		{
 			everythingEnable(true);
+		}
+
+		private void bossLaneCheck_CheckedChanged(object sender, EventArgs e)
+		{
+			bossLaneOn = bossLaneCheck.Checked;
+		}
+
+		private void targetSpawnerCheck_CheckedChanged(object sender, EventArgs e)
+		{
+			targetSpawnersOn = targetSpawnerCheck.Checked;
+		}
+
+		private void ovenzifCheck_CheckedChanged(object sender, EventArgs e)
+		{
+			offenseiveAbilitiesOn = ovenzifCheck.Checked;
+		}
+
+		private void itemsCheck_CheckedChanged(object sender, EventArgs e)
+		{
+			itemAbilitiesOn = itemsCheck.Checked;
 		}
 	}
 }

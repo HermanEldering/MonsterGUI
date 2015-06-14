@@ -42,8 +42,8 @@ namespace MonsterGUI
 		private void postUpgradesThread()
 		{
 			// ChooseUpgrade: {"gameid":"6059","upgrades":[4,4,5,6]}
-			
-			WebClient wc = new WebClient();
+
+			WebClient wc = new TimeoutWebClient();
 			const int notSentCountLimit = 60; // Send a blank upgrade request every 60 ticks to force update the player state
 			int notSentCount = notSentCountLimit;
 			while (running)
@@ -69,7 +69,7 @@ namespace MonsterGUI
 					*/
 
 					// Send the upgrade packet
-					if (upgrades || notSentCount >= notSentCountLimit)
+					if (upgrades)
 					{
 						upgrades_json += "]}";
 						StringBuilder url = new StringBuilder();
@@ -92,14 +92,25 @@ namespace MonsterGUI
 						if (!exiting) Invoke(resultPostUpgradesDelegate, json);
 						notSentCount = 0;
 					}
+					else if (notSentCount >= notSentCountLimit && !string.IsNullOrEmpty(steamId))
+					{
+						StringBuilder url = new StringBuilder();
+						url.Append("http://");
+						url.Append(host);
+						url.Append("GetPlayerData/v0001/?gameid=");
+						url.Append(room);
+						url.Append("&steamid=");
+						url.Append(steamId);
+						url.Append("&include_tech_tree=1&format=json");
+						if (!exiting) Invoke(enableDelegate, postUpgradesState, true);
+						string res = wc.DownloadString(url.ToString());
+						JSONNode json = JSON.Parse(res);
+						if (!exiting) Invoke(resultPostUpgradesDelegate, json);
+						notSentCount = 0;
+					}
 					else
 					{
 						++notSentCount;
-					}
-
-					if (upgrades)
-					{
-						// TODO
 					}
 				}
 				catch (Exception ex)

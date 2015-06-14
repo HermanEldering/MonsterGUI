@@ -12,9 +12,13 @@ namespace MonsterGUI
 		// Switched by the callbacks from the checkboxes in the GUI
 		volatile bool autoClickerOn = false;
 		volatile bool laneSwitcherOn = true;
+		volatile bool targetSpawnersOn = true;
 		volatile bool goldLaneSwitcherOn = true;
+		volatile bool bossLaneOn = true;
 		volatile bool respawnerOn = true;
 		volatile bool supportAbilitiesOn = false;
+		volatile bool offenseiveAbilitiesOn = false;
+		volatile bool itemAbilitiesOn = false;
 
 		// Auto clicker runtime info
 		long clickCount = 0;
@@ -38,9 +42,13 @@ namespace MonsterGUI
 			resultPostAbilitiesDelegate = new JsonCallback(resultPostAbilities);
 			autoClickerCheck.Checked = autoClickerOn;
 			laneSwitcherCheck.Checked = laneSwitcherOn;
+			targetSpawnerCheck.Checked = targetSpawnersOn;
 			goldLaneCheck.Checked = goldLaneSwitcherOn;
+			bossLaneCheck.Checked = bossLaneOn;
 			respawnerCheck.Checked = respawnerOn;
 			supportAbilitiesCheck.Checked = supportAbilitiesOn;
+			ovenzifCheck.Checked = offenseiveAbilitiesOn;
+			itemsCheck.Checked = itemAbilitiesOn;
 		}
 
 		/// <summary>
@@ -117,13 +125,43 @@ namespace MonsterGUI
 			return false;
 		}
 
+		private bool treasureMonsterOnLane(int i)
+		{
+			for (int j = 0; j < gameData.Lanes[i].Enemies.Length; ++j)
+			{
+				if (gameData.Lanes[i].Enemies[j].Type == EnemyType.Treasure && gameData.Lanes[i].Enemies[j].Hp != 0)
+					return true;
+			}
+			return false;
+		}
+
+		private int findSpawnerOnLane(int i)
+		{
+			for (int j = 0; j < gameData.Lanes[i].Enemies.Length; ++j)
+			{
+				if (gameData.Lanes[i].Enemies[j].Type == EnemyType.Spawner && gameData.Lanes[i].Enemies[j].Hp != 0)
+					return j;
+			}
+			return -1;
+		}
+
+		private int findTreasureOnLane(int i)
+		{
+			for (int j = 0; j < gameData.Lanes[i].Enemies.Length; ++j)
+			{
+				if (gameData.Lanes[i].Enemies[j].Type == EnemyType.Treasure && gameData.Lanes[i].Enemies[j].Hp != 0)
+					return j;
+			}
+			return -1;
+		}
+
 		private decimal highestHpFactorOnLane(int i)
 		{
 			decimal highest = 0;
 			for (int j = 0; j < gameData.Lanes[i].Enemies.Length; ++j)
 			{
-				if (gameData.Lanes[i].Enemies[j].Type != EnemyType.None && gameData.Lanes[i].Enemies[j].HpMax != 0 && (gameData.Lanes[i].Enemies[j].Hp / gameData.Lanes[i].Enemies[j].HpMax) > highest)
-					return gameData.Lanes[i].Enemies[j].Hp / gameData.Lanes[i].Enemies[j].HpMax;
+				if (gameData.Lanes[i].Enemies[j].Type != EnemyType.None && gameData.Lanes[i].Enemies[j].MaxHp != 0 && (gameData.Lanes[i].Enemies[j].Hp / gameData.Lanes[i].Enemies[j].MaxHp) > highest)
+					return gameData.Lanes[i].Enemies[j].Hp / gameData.Lanes[i].Enemies[j].MaxHp;
 			}
 			return highest;
 		}
@@ -145,7 +183,7 @@ namespace MonsterGUI
 			// 4: Switch Target [new_target] (NOTE: Server automatically switches targets as well)
 
 			Random random = new Random();
-			WebClient wc = new WebClient();
+			WebClient wc = new TimeoutWebClient();
 			while (running)
 			{
 				int startTick = System.Environment.TickCount;
@@ -195,7 +233,7 @@ namespace MonsterGUI
 						}
 					}
 
-					bool goldLane = false;
+					bool smartLane = false;
 					if (goldLaneSwitcherOn)
 					{
 						int bestLane = -1;
@@ -212,11 +250,33 @@ namespace MonsterGUI
 						if (bestLane >= 0)
 						{
 							laneRequested = bestLane;
-							goldLane = true;
+							smartLane = true;
 						}
 					}
 
-					if (laneSwitcherOn || goldLane) // If any lane switching algorithm is enabled
+					if (bossLaneOn)
+					{
+						for (int i = 0; i < gameData.Lanes.Length; ++i)
+						{
+							if (treasureMonsterOnLane(i))
+							{
+								laneRequested = i;
+								smartLane = true;
+								break;
+							}
+						}
+						for (int i = 0; i < gameData.Lanes.Length; ++i)
+						{
+							if (bossMonsterOnLane(i))
+							{
+								laneRequested = i;
+								smartLane = true;
+								break;
+							}
+						}
+					}
+
+					if (laneSwitcherOn || smartLane) // If any lane switching algorithm is enabled
 					{
 						if (laneRequested != playerData.CurrentLane)
 						{
@@ -233,6 +293,22 @@ namespace MonsterGUI
 
 					// After lane switched
 					// NOTE: Target switching is already done by the server so not entirely useful since the monsters die too fast
+
+					if (targetSpawnersOn) // Useful for nuking spawners at early levels and treasure
+					{
+						int preferTarget = findTreasureOnLane(laneRequested);
+						if (preferTarget < 0)
+							preferTarget = findSpawnerOnLane(laneRequested);
+						if (preferTarget >= 0)
+						{
+							if (preferTarget != playerData.Target)
+							{
+								if (abilities) abilties_json += ",";
+								abilties_json += "{\"ability\":2,\"new_target\":" + preferTarget + "}"; // Only using this for spawners
+								abilities = true;
+							}
+						}
+					}
 
 					if (supportAbilitiesOn && enemiesAliveInLane(laneRequested) && enemiesAliveInLane(playerData.CurrentLane))
 					{
@@ -267,7 +343,7 @@ namespace MonsterGUI
 							{
 								if (hasPurchasedAbility(Abilities.MetalDetector) && !isAbilityCoolingDown(Abilities.MetalDetector))
 								{
-									if (highestHpFactorOnLane(laneRequested) > 0.9m)
+									if (highestHpFactorOnLane(laneRequested) > 0.8m)
 									{
 										if (abilities) abilties_json += ",";
 										abilties_json += "{\"ability\":" + (int)Abilities.MetalDetector + "}"; // Increase Gold Drops
@@ -293,26 +369,44 @@ namespace MonsterGUI
 					}
 					addClicks = ac;
 
-					// Send the UseAbilities POST request
-					abilties_json += "]}";
-					StringBuilder url = new StringBuilder();
-					url.Append("https://");
-					url.Append(host);
-					url.Append("UseAbilities/v0001/");
-					StringBuilder query = new StringBuilder();
-					query.Append("input_json=");
-					query.Append(WebUtilities.UrlEncode(abilties_json));
-					query.Append("&access_token=");
-					query.Append(accessToken);
-					query.Append("&format=json");
-					wc.Headers[HttpRequestHeader.AcceptCharset] = "utf-8";
-					wc.Headers[HttpRequestHeader.ContentType] = "application/x-www-form-urlencoded";
-					if (!exiting) Invoke(enableDelegate, postAbilitiesState, true);
-					Console.WriteLine(abilties_json);
-					string res = wc.UploadString(url.ToString(), query.ToString());
-					Console.WriteLine(res);
-					JSONNode json = JSON.Parse(res);
-					if (!exiting) Invoke(resultPostAbilitiesDelegate, json);
+					if (abilities)
+					{
+						// Send the UseAbilities POST request
+						abilties_json += "]}";
+						StringBuilder url = new StringBuilder();
+						url.Append("https://");
+						url.Append(host);
+						url.Append("UseAbilities/v0001/");
+						StringBuilder query = new StringBuilder();
+						query.Append("input_json=");
+						query.Append(WebUtilities.UrlEncode(abilties_json));
+						query.Append("&access_token=");
+						query.Append(accessToken);
+						query.Append("&format=json");
+						wc.Headers[HttpRequestHeader.AcceptCharset] = "utf-8";
+						wc.Headers[HttpRequestHeader.ContentType] = "application/x-www-form-urlencoded";
+						if (!exiting) Invoke(enableDelegate, postAbilitiesState, true);
+						Console.WriteLine(abilties_json);
+						string res = wc.UploadString(url.ToString(), query.ToString());
+						Console.WriteLine(res);
+						JSONNode json = JSON.Parse(res);
+						if (!exiting) Invoke(resultPostAbilitiesDelegate, json);
+					}
+					else if (!string.IsNullOrEmpty(steamId))
+					{
+						StringBuilder url = new StringBuilder();
+						url.Append("http://");
+						url.Append(host);
+						url.Append("GetPlayerData/v0001/?gameid=");
+						url.Append(room);
+						url.Append("&steamid=");
+						url.Append(steamId);
+						url.Append("&include_tech_tree=0&format=json");
+						if (!exiting) Invoke(enableDelegate, postAbilitiesState, true);
+						string res = wc.DownloadString(url.ToString());
+						JSONNode json = JSON.Parse(res);
+						if (!exiting) Invoke(resultPostAbilitiesDelegate, json);
+					}
 				}
 				catch (Exception ex)
 				{
