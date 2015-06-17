@@ -46,39 +46,12 @@ namespace MonsterGUI
 		GiveGold = 22, 
 		StealHealth = 23,
 		ReflectDamage = 24,
+		RandomItem = 25,
+		Wormhole = 26,
+		ClearCool = 27,
 
-		Nb = 25
-	}
-
-	/// <summary>
-	/// Bitfield format for abilities
-	/// </summary>
-	enum AbilitiesBitfield
-	{
-		Attack = 1 << Abilities.Attack,
-		ChangeLane = 1 << Abilities.ChangeLane,
-		Respawn = 1 << Abilities.Respawn,
-		ChangeTarget = 1 << Abilities.ChangeTarget,
-		MoraleBooster = 1 << Abilities.MoraleBooster,
-		GoodLuckCharm = 1 << Abilities.GoodLuckCharm,
-		Medics = 1 << Abilities.Medics,
-		MetalDetector = 1 << Abilities.MetalDetector,
-		Cooldown = 1 << Abilities.Cooldown,
-		Nuke = 1 << Abilities.Nuke,
-		ClusterBomb = 1 << Abilities.ClusterBomb,
-		Napalm = 1 << Abilities.Napalm,
-		Revive = 1 << Abilities.Revive,
-		CrippleSpawner = 1 << Abilities.CrippleSpawner,
-		CrippleMonster = 1 << Abilities.CrippleMonster,
-		MaximizeElement = 1 << Abilities.MaximizeElement,
-		GoldRain = 1 << Abilities.GoldRain,
-		IncreaseCritPercentagePermanently = 1 << Abilities.IncreaseCritPercentagePermanently,
-		GoldForDamage = 1 << Abilities.GoldForDamage,
-		IncreaseHPPermanently = 1 << Abilities.IncreaseHPPermanently,
-		GodMode = 1 << Abilities.GodMode,
-		GiveGold = 1 << Abilities.GiveGold,
-		StealHealth = 1 << Abilities.StealHealth,
-		ReflectDamage = 1 << Abilities.ReflectDamage
+		Nb = 28,
+		Max = 64
 	}
 
 	enum EnemyType
@@ -92,7 +65,7 @@ namespace MonsterGUI
 	}
 
 	// g_TuningData
-	enum UpgradeType
+	enum UpgradeOption
 	{
 		LightArmor = 0,
 		AutoFireCannon = 1,
@@ -117,7 +90,30 @@ namespace MonsterGUI
 		EnergyShields = 20,
 		FarmingEquipment = 21,
 		Railgun = 22,
-		Nb = 23
+		PersonalTraining = 23,
+		AFKEquipment = 24,
+		NewMouseButton = 25,
+		HPUpgrade5 = 26,
+		DPSUpgrade5 = 27,
+		ClickUpgrade5 = 28,
+
+		Nb = 29,
+		Max = 64
+	}
+
+	enum UpgradeType
+	{
+		HitPoints = 0,
+		DPS = 1,
+		ClickDamage = 2,
+		DamageMultiplier_Fire = 3,
+		DamageMultiplier_Water = 4,
+		DamageMultiplier_Air = 5,
+		DamageMultiplier_Earth = 6,
+		DamageMultiplier_Crit = 7,
+		PurchaseAbility = 8,
+		BossLootDropPercentage = 9,
+		Nb = 10
 	}
 
 	struct PlayerData
@@ -130,7 +126,7 @@ namespace MonsterGUI
 
 		public int TimeDied;
 
-		public AbilitiesBitfield ActiveAbilitiesBitfield;
+		public ulong ActiveAbilitiesBitfield;
 	}
 
 	struct Enemy
@@ -161,6 +157,7 @@ namespace MonsterGUI
 
 		public Enemy[] Enemies;
 		public decimal ActivePlayerAbilityGoldPerClick;
+		public UpgradeOption Element;
 	}
 
 	struct GameData
@@ -205,12 +202,6 @@ namespace MonsterGUI
 			"time_saving": 28.79324529773146*/
 	}
 
-	/*struct Upgrade
-	{
-		bool Has;
-		// TODO int Level;
-	}*/
-
 	/// <summary>
 	/// See TechTreeExample.txt
 	/// </summary>
@@ -219,16 +210,58 @@ namespace MonsterGUI
 		public void Init()
 		{
 			// NOTE: Fixed array sizes as we are accessing from multiple threads without locking
-			// Upgrades = new Upgrade[(int)UpgradeType.Nb];
-			AbilityItems = new int[(int)Abilities.Nb - (int)Abilities.StartItem];
+			Upgrades = new Upgrade[(int)UpgradeOption.Max];
+			AbilityItems = new int[(int)Abilities.Max];
 		}
 
-		// public Upgrade[] Upgrades; // TODO
+		public struct Upgrade
+		{
+			public int Level;
+			public decimal CostForNextLevel;
+		}
 
-		public AbilitiesBitfield UnlockedAbilitiesBitfield;
+		public Upgrade[] Upgrades;
+
+		public ulong UnlockedAbilitiesBitfield;
 
 		public int[] AbilityItems;
 
+		public decimal CritPercentage;
+		public int BadgePoints;
+
+	}
+
+	struct TuningData
+	{
+		public void Init()
+		{
+			// NOTE: Fixed array sizes as we are accessing from multiple threads without locking
+			Upgrades = new Upgrade[(int)UpgradeOption.Max];
+			for (int i = 0; i < Upgrades.Length; ++i)
+				Upgrades[i].Type = UpgradeType.Nb;
+		}
+
+		public struct PlayerStruct
+		{
+			public decimal Hp;
+			public decimal Dps;
+			public decimal DamagePerClick;
+			public decimal DamageMultiplierFire;
+			public decimal DamageMultiplierCrit;
+			public decimal CritPercentage;
+			public decimal LootChance;
+		}
+
+		public struct Upgrade
+		{
+			public decimal Multiplier;
+			public UpgradeType Type;
+			public int RequiredUpgrade;
+			public int RequiredUpgradeLevel;
+		};
+
+		public PlayerStruct Player;
+		public Upgrade[] Upgrades;
 	}
 
 	public partial class MainWindow
@@ -238,11 +271,14 @@ namespace MonsterGUI
 		GameData gameData = new GameData();
 		Stats stats = new Stats();
 		TechTree techTree = new TechTree();
+		TuningData tuningData = new TuningData();
 
 		volatile bool getPlayerNames = false;
 		bool getSteamId = false;
+		bool getTuningData = false;
 
 		string steamId = "";
+		string personaName = "";
 
 		/// <summary>
 		/// App init
@@ -252,8 +288,10 @@ namespace MonsterGUI
 			resultTokenDetailsDelegate = new JsonCallback(resultTokenDetails);
 			resultPlayerNamesDelegate = new JsonCallback(resultPlayerNames);
 			resultGameDataDelegate = new JsonCallback(resultGameData);
+			resultTuningDataDelegate = new JsonCallback(resultTuningData);
 			gameData.Init();
 			techTree.Init();
+			tuningData.Init();
 		}
 
 		/// <summary>
@@ -265,6 +303,7 @@ namespace MonsterGUI
 
 			getPlayerNames = true;
 			getSteamId = true;
+			getTuningData = true;
 
 			abilitiesIntfs = new System.Windows.Forms.Label[8];
 			abilitiesIntfs[(int)Abilities.MoraleBooster - (int)Abilities.StartAbility] = moraleBoosterIntf;
@@ -276,7 +315,7 @@ namespace MonsterGUI
 			abilitiesIntfs[(int)Abilities.ClusterBomb - (int)Abilities.StartAbility] = clusterBombIntf;
 			abilitiesIntfs[(int)Abilities.Napalm - (int)Abilities.StartAbility] = napalmIntf;
 
-			itemsIntfs = new System.Windows.Forms.Label[12];
+			itemsIntfs = new System.Windows.Forms.Label[15];
 			itemsIntfs[(int)(int)Abilities.Revive - (int)Abilities.StartItem] = resurrIntf;
 			itemsIntfs[(int)(int)Abilities.CrippleSpawner - (int)Abilities.StartItem] = crippleSpawnIntf;
 			itemsIntfs[(int)(int)Abilities.CrippleMonster - (int)Abilities.StartItem] = crppleMonstIntf;
@@ -289,8 +328,11 @@ namespace MonsterGUI
 			itemsIntfs[(int)(int)Abilities.GiveGold - (int)Abilities.StartItem] = treasureIntf;
 			itemsIntfs[(int)(int)Abilities.StealHealth - (int)Abilities.StartItem] = stealHpIntf;
 			itemsIntfs[(int)(int)Abilities.ReflectDamage - (int)Abilities.StartItem] = reflctDmgIntf;
+			itemsIntfs[(int)(int)Abilities.RandomItem - (int)Abilities.StartItem] = giveRandomIntf;
+			itemsIntfs[(int)(int)Abilities.Wormhole - (int)Abilities.StartItem] = skipLevelIntf;
+			itemsIntfs[(int)(int)Abilities.ClearCool - (int)Abilities.StartItem] = clearCoolIntf;
 
-			itemsCounts = new System.Windows.Forms.Label[12];
+			itemsCounts = new System.Windows.Forms.Label[15];
 			itemsCounts[(int)(int)Abilities.Revive - (int)Abilities.StartItem] = resurrCount;
 			itemsCounts[(int)(int)Abilities.CrippleSpawner - (int)Abilities.StartItem] = crpplSpawnCount;
 			itemsCounts[(int)(int)Abilities.CrippleMonster - (int)Abilities.StartItem] = crippleMonstCount;
@@ -303,19 +345,36 @@ namespace MonsterGUI
 			itemsCounts[(int)(int)Abilities.GiveGold - (int)Abilities.StartItem] = treasureCount;
 			itemsCounts[(int)(int)Abilities.StealHealth - (int)Abilities.StartItem] = stealHpCount;
 			itemsCounts[(int)(int)Abilities.ReflectDamage - (int)Abilities.StartItem] = reflectDmgCount;
+			itemsCounts[(int)(int)Abilities.RandomItem - (int)Abilities.StartItem] = giveRandomCount;
+			itemsCounts[(int)(int)Abilities.Wormhole - (int)Abilities.StartItem] = skipLevelCount;
+			itemsCounts[(int)(int)Abilities.ClearCool - (int)Abilities.StartItem] = clearCoolCount;
+
+			upgradeIntf[(int)UpgradeType.HitPoints] = upgrStatHP;
+			upgradeIntf[(int)UpgradeType.DPS] = upgrStatDPS;
+			upgradeIntf[(int)UpgradeType.ClickDamage] = upgrStatDmg;
+			upgradeIntf[(int)UpgradeType.DamageMultiplier_Fire] = upgrStatFire;
+			upgradeIntf[(int)UpgradeType.DamageMultiplier_Water] = upgrStatWater;
+			upgradeIntf[(int)UpgradeType.DamageMultiplier_Air] = upgrStatAir;
+			upgradeIntf[(int)UpgradeType.DamageMultiplier_Earth] = upgrStatEarth;
+			upgradeIntf[(int)UpgradeType.DamageMultiplier_Crit] = upgrStatCrit;
+			upgradeIntf[(int)UpgradeType.BossLootDropPercentage] = upgrStatLoot;
+			upgradeIntf[(int)UpgradeType.HitPoints] = upgrStatHP;
 
 			playerData = new PlayerData();
 			gameData = new GameData();
 			gameData.Init();
 			stats = new Stats();
-			TechTree techTree = new TechTree();
+			techTree = new TechTree();
 			techTree.Init();
+			tuningData = new TuningData();
+			tuningData.Init();
 			printPlayerData();
 			printGameData();
 			printTechTree();
+			processTechTree(); // Copy some data from print over for use
 		}
 
-		private void critDamage(long value)
+		private void critDamage(decimal value)
 		{
 			// It seems this is sent to the client to increment a global counter which is then
 			// decremented every time the user clicks to do a critic using the calculated crit 
@@ -333,23 +392,30 @@ namespace MonsterGUI
 			JSONNode critDamage = json["crit_damage"];
 			JSONNode timeDied = json["time_died"];
 			JSONNode activeAbilities = json["active_abilities"];
+			JSONNode loot = json["loot"];
 
-			if (hp != null) playerData.Hp = Convert.ToDecimal(hp.Value, CultureInfo.InvariantCulture);
-			if (gold != null) playerData.Gold = Convert.ToDecimal(gold.Value, CultureInfo.InvariantCulture);
+			if (hp != null) playerData.Hp = Decimal.Parse(hp.Value.ToUpperInvariant(), System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture);
+			if (gold != null) playerData.Gold = Decimal.Parse(gold.Value.ToUpperInvariant(), System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture);
 			if (currentLane != null) playerData.CurrentLane = Convert.ToInt32(currentLane.Value, CultureInfo.InvariantCulture);
 			if (target != null) playerData.Target = Convert.ToInt32(target.Value, CultureInfo.InvariantCulture);
-			if (activeAbilitiesBitfield != null) playerData.ActiveAbilitiesBitfield = (AbilitiesBitfield)Convert.ToInt32(activeAbilitiesBitfield.Value, CultureInfo.InvariantCulture);
+			if (activeAbilitiesBitfield != null) playerData.ActiveAbilitiesBitfield = Convert.ToUInt64(activeAbilitiesBitfield.Value, CultureInfo.InvariantCulture);
 			if (timeDied != null) playerData.TimeDied = Convert.ToInt32(timeDied.Value, CultureInfo.InvariantCulture);
+
+			if (loot != null)
+			{
+				refreshUpgrades = true;
+			}
 
 			if (critDamage != null)
 			{
-				long v = Convert.ToInt64(critDamage.Value, CultureInfo.InvariantCulture);
+				decimal v = Decimal.Parse(critDamage.Value.ToUpperInvariant(), System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture);
 				if (v != 0)
 				{
 					this.critDamage(v);
 				}
 			}
 
+			--waitForNewPlayerData;
 			printPlayerData();
 		}
 
@@ -365,7 +431,7 @@ namespace MonsterGUI
 			"① ② ❸ ④",
 			"① ② ③ ❹",
 		};
-
+		
 		/// <summary>
 		/// Display all player specific data to screen (stuff in playerData changed)
 		/// </summary>
@@ -379,13 +445,78 @@ namespace MonsterGUI
 			printPlayerTech();
 		}
 
+		static string[] elementIcons = new string[] {
+			"🔥", // Fire
+			"🌊", // Water
+			"💨", // Air
+			"🌴", // Earth
+		};
+		private void printGameTree()
+		{
+			int bestElement = bestElementLevel();
+			string res = "";
+			for (int i = 0; i < gameData.Lanes.Length; ++i)
+			{
+				if (gameData.Lanes[i].Element >= UpgradeOption.ElementalFire && gameData.Lanes[i].Element <= UpgradeOption.ElementalEarth)
+				{
+					int laneEleLevel = techTree.Upgrades[(int)gameData.Lanes[i].Element].Level;
+					if (laneEleLevel >= bestElement)
+					{
+						res += "【" + elementIcons[(int)gameData.Lanes[i].Element - (int)UpgradeOption.ElementalFire] + "】 ";
+					}
+					else
+					{
+						res += elementIcons[(int)gameData.Lanes[i].Element - (int)UpgradeOption.ElementalFire] + " ";
+					}
+				}
+			}
+			elementText.Text = res;
+		}
+
 		void decodeTechTree(JSONNode json)
 		{
 			JSONNode unlockedAbilitiesBitfield = json["unlocked_abilities_bitfield"];
 			JSONNode abilityItems = json["ability_items"];
+			JSONNode upgrades = json["upgrades"];
+			JSONNode critPercentage = json["crit_percentage"];
+			JSONNode badgePoints = json["badge_points"];
 
-			if (unlockedAbilitiesBitfield != null) techTree.UnlockedAbilitiesBitfield = (AbilitiesBitfield)Convert.ToInt32(unlockedAbilitiesBitfield.Value, CultureInfo.InvariantCulture);
-			int hasAbilityItem = 0;
+			if (critPercentage != null) this.techTree.CritPercentage = Decimal.Parse(critPercentage.Value.ToUpperInvariant(), System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture);
+			if (badgePoints != null) this.techTree.BadgePoints = Convert.ToInt32(badgePoints.Value, CultureInfo.InvariantCulture);
+
+			// "level": 20,
+			// "cost_for_next_level": 9094947010
+			ulong hasUpgrade = 0;
+			if (upgrades != null)
+			{
+				foreach (JSONNode upgrade in upgrades.Childs)
+				{
+					JSONNode upgrade_ = upgrade["upgrade"];
+					JSONNode level = upgrade["level"];
+					JSONNode costForNextLevel = upgrade["cost_for_next_level"];
+					if (upgrade_ != null && level != null && costForNextLevel != null)
+					{
+						int upgradeI = Convert.ToInt32(upgrade_.Value, CultureInfo.InvariantCulture);
+						if (upgradeI < techTree.Upgrades.Length)
+						{
+							techTree.Upgrades[upgradeI].Level = Convert.ToInt32(level.Value, CultureInfo.InvariantCulture);
+							techTree.Upgrades[upgradeI].CostForNextLevel = Decimal.Parse(costForNextLevel.Value.ToUpperInvariant(), System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture);
+							hasUpgrade |= (1UL << upgradeI);
+						}
+					}
+				}
+			}
+			for (int i = 0; i < techTree.Upgrades.Length; ++i)
+			{
+				if ((hasUpgrade & (1UL << i)) == 0)
+				{
+					techTree.Upgrades[i].Level = 0;
+					techTree.Upgrades[i].CostForNextLevel = decimal.MaxValue;
+				}
+			}
+
+			if (unlockedAbilitiesBitfield != null) techTree.UnlockedAbilitiesBitfield = Convert.ToUInt64(unlockedAbilitiesBitfield.Value, CultureInfo.InvariantCulture);
+			ulong hasAbilityItem = 0;
 			if (abilityItems != null)
 			{
 				foreach (JSONNode abilityItem in abilityItems.Childs)
@@ -394,47 +525,121 @@ namespace MonsterGUI
 					JSONNode quantity = abilityItem["quantity"];
 					if (ability != null && quantity != null)
 					{
-						int abilityI = Convert.ToInt32(ability.Value, CultureInfo.InvariantCulture) - (int)Abilities.StartItem;
+						int abilityI = Convert.ToInt32(ability.Value, CultureInfo.InvariantCulture);
 						int quantityI = Convert.ToInt32(quantity.Value, CultureInfo.InvariantCulture);
-						techTree.AbilityItems[abilityI] = quantityI;
-						hasAbilityItem |= (1 << abilityI);
+						if (abilityI < techTree.AbilityItems.Length)
+						{
+							techTree.AbilityItems[abilityI] = quantityI;
+							hasAbilityItem |= (1UL << abilityI);
+						}
 					}
 				}
 			}
 			for (int i = 0; i < techTree.AbilityItems.Length; ++i)
 			{
-				if ((hasAbilityItem & (1 << i)) == 0)
+				if ((hasAbilityItem & (1UL << i)) == 0)
 					techTree.AbilityItems[i] = 0;
 			}
 
 			printTechTree();
+			processTechTree(); // Copy some data from print over for use
 		}
 
+		string[] printTechTreeBases = new string[(int)UpgradeType.Nb];
+		void printTuningData()
+		{
+			printTechTreeBases[(int)UpgradeType.HitPoints] = (tuningData.Player.Hp / 1000m).ToString() + "k";
+			printTechTreeBases[(int)UpgradeType.DPS] = tuningData.Player.DamagePerClick.ToString();
+			printTechTreeBases[(int)UpgradeType.ClickDamage] = tuningData.Player.DamagePerClick.ToString();
+			printTechTreeBases[(int)UpgradeType.DamageMultiplier_Crit] = tuningData.Player.DamageMultiplierCrit.ToString() + "x";
+			printTechTreeBases[(int)UpgradeType.BossLootDropPercentage] = tuningData.Player.LootChance.ToString() + "x";
+		}
+
+		decimal[] techTreeUpgradeMultipliers = new decimal[(int)UpgradeType.Nb];
+		void processTechTree()
+		{
+			if (printTechTreeBases[(int)UpgradeType.ClickDamage] == null)
+				return;
+
+			// Just copy so they can be used in thread
+			for (int i = 0; i < printTechTreeMultipliers.Length; ++i)
+			{
+				techTreeUpgradeMultipliers[i] = printTechTreeMultipliers[i];
+			}
+
+			waitForUpgradeData = false;
+		}
+
+		System.Windows.Forms.Label[] upgradeIntf = new System.Windows.Forms.Label[(int)UpgradeType.Nb];
+		decimal[] printTechTreeMultipliers = new decimal[(int)UpgradeType.Nb];
+		string[] printTechTreeLevels = new string[(int)UpgradeType.Nb];
 		/// <summary>
-		/// Display all tech tree data on screen (stuff in techTree changed)
+		/// Display all tech tree data on screen (stuff in techTree changed) (must call processTechTree after)
 		/// </summary>
 		void printTechTree()
 		{
+			if (printTechTreeBases[(int)UpgradeType.ClickDamage] == null)
+				return;
+
+			for (int i = 0; i < (int)UpgradeType.Nb; ++i)
+			{
+				printTechTreeMultipliers[i] = 1.0m;
+				printTechTreeLevels[i] = "";
+			}
+			printTechTreeMultipliers[(int)UpgradeType.DPS] = 0.0m;
+			for (int i = 0; i < tuningData.Upgrades.Length; ++i) if (tuningData.Upgrades[i].Type < UpgradeType.Nb)
+			{
+				decimal totalMultiplier = (decimal)techTree.Upgrades[i].Level * tuningData.Upgrades[i].Multiplier;
+				printTechTreeMultipliers[(int)tuningData.Upgrades[i].Type] += totalMultiplier;
+				printTechTreeLevels[(int)tuningData.Upgrades[i].Type] += " " + techTree.Upgrades[i].Level.ToString();
+			}
+			for (int i = 0; i < upgradeIntf.Length; ++i) if (upgradeIntf[i] != null && !string.IsNullOrEmpty(printTechTreeLevels[i]))
+			{
+				upgradeIntf[i].Text = decimal.Round(printTechTreeMultipliers[i], i == (int)UpgradeType.BossLootDropPercentage ? 2 : 1).ToString(CultureInfo.InvariantCulture) 
+					+ "x" + printTechTreeBases[i] + " (" + printTechTreeLevels[i].Substring(1) + ")";
+				bool makeBold = printUpgradingType[i];
+				if (makeBold != upgradeIntf[i].Font.Bold)
+					upgradeIntf[i].Font = new System.Drawing.Font(upgradeIntf[i].Font, makeBold ? System.Drawing.FontStyle.Bold : System.Drawing.FontStyle.Regular);
+			}
+			decimal dmgBase = tuningData.Player.DamagePerClick;
+			decimal mulBase = printTechTreeMultipliers[(int)UpgradeType.ClickDamage];
+			decimal mulEle = Math.Max(printTechTreeMultipliers[(int)UpgradeType.DamageMultiplier_Air],
+				Math.Max(printTechTreeMultipliers[(int)UpgradeType.DamageMultiplier_Earth],
+				Math.Max(printTechTreeMultipliers[(int)UpgradeType.DamageMultiplier_Fire],
+				printTechTreeMultipliers[(int)UpgradeType.DamageMultiplier_Water])));
+			decimal mulCrit = printTechTreeMultipliers[(int)UpgradeType.DamageMultiplier_Crit];
+			decimal dpc = dmgBase * mulBase;
+			decimal dpcEle = dpc * mulEle;
+			decimal dpcCrit = dpc * mulCrit;
+			dpcDisp.Text = decimal.Round(dpc).ToString();
+			dpcEleDisp.Text = decimal.Round(dpcEle).ToString();
+			dpcCritDisp.Text = decimal.Round(dpcCrit).ToString();
+
 			printPlayerTech();
+			printGameTree();
+		}
+
+		int itemCount(Abilities ability)
+		{
+			return techTree.AbilityItems[(int)ability];
 		}
 
 		bool hasPurchasedAbility(Abilities ability)
 		{
 			if (ability >= Abilities.StartItem)
 			{
-				int abilityI = (int)ability - (int)Abilities.StartItem;
-				return techTree.AbilityItems[abilityI] > 0;
+				return techTree.AbilityItems[(int)ability] > 0;
 			}
 			else
 			{
-				AbilitiesBitfield abbit = (AbilitiesBitfield)(1 << (int)ability);
+				ulong abbit = 1UL << (int)ability;
 				return (techTree.UnlockedAbilitiesBitfield & abbit) == abbit;
 			}
 		}
 
 		bool isAbilityCoolingDown(Abilities ability)
 		{
-			AbilitiesBitfield abbit = (AbilitiesBitfield)(1 << (int)ability);
+			ulong abbit = 1UL << (int)ability;
 			return (playerData.ActiveAbilitiesBitfield & abbit) == abbit;
 		}
 
@@ -447,19 +652,26 @@ namespace MonsterGUI
 			for (int i = 0; i < abilitiesIntfs.Length; ++i)
 			{
 				int ab = i + (int)Abilities.StartAbility;
-				AbilitiesBitfield abbit = (AbilitiesBitfield)(1 << ab);
+				ulong abbit = (1UL << ab);
 				abilitiesIntfs[i].Enabled = (playerData.ActiveAbilitiesBitfield & abbit) != abbit;
 				abilitiesIntfs[i].Visible = (techTree.UnlockedAbilitiesBitfield & abbit) == abbit;
 			}
+			int xpos = 6;
 			for (int i = 0; i < itemsIntfs.Length; ++i)
 			{
 				int ab = i + (int)Abilities.StartItem;
-				AbilitiesBitfield abbit = (AbilitiesBitfield)(1 << ab);
+				ulong abbit = (1UL << ab);
 				itemsIntfs[i].Enabled = (playerData.ActiveAbilitiesBitfield & abbit) != abbit;
-				itemsIntfs[i].Visible = (techTree.AbilityItems[i] > 0);
-				itemsCounts[i].Text = techTree.AbilityItems[i].ToString();
+				itemsIntfs[i].Visible = (techTree.AbilityItems[ab] > 0);
+				itemsCounts[i].Text = techTree.AbilityItems[ab].ToString();
 				itemsCounts[i].Enabled = (playerData.ActiveAbilitiesBitfield & abbit) != abbit;
-				itemsCounts[i].Visible = (techTree.AbilityItems[i] > 0);
+				itemsCounts[i].Visible = (techTree.AbilityItems[ab] > 0);
+				if (techTree.AbilityItems[ab] > 0)
+				{
+					itemsIntfs[i].Location = new System.Drawing.Point(xpos, itemsIntfs[i].Location.Y);
+					itemsCounts[i].Location = new System.Drawing.Point(xpos, itemsCounts[i].Location.Y);
+					xpos += 46;
+				}
 			}
 		}
 
@@ -467,9 +679,70 @@ namespace MonsterGUI
 		private void resultTokenDetails(JSONNode json)
 		{
 			JSONNode steamid = json["steamid"];
+			JSONNode personaName = json["persona_name"];
+
 			if (steamid != null) steamId = steamid.Value;
+			if (personaName != null) this.personaName = personaName.Value;
 
 			Console.WriteLine("steamid: " + steamId);
+		}
+
+		private JsonCallback resultTuningDataDelegate;
+		private void resultTuningData(JSONNode json)
+		{
+			JSONNode response = json["response"];
+			if (response == null)
+				return;
+			JSONNode jsonNode = response["json"];
+			if (jsonNode == null)
+				return;
+			// Console.WriteLine(jsonNode.Value);
+			// System.IO.File.WriteAllText("TuningDataExample.txt", jsonNode.Value);
+			JSONNode tuningData = JSON.Parse(jsonNode.Value);
+
+			JSONNode player = tuningData["player"];
+			if (player != null)
+			{
+				JSONNode hp = player["hp"].Value;
+				JSONNode dps = player["dps"].Value;
+				JSONNode damagePerClick = player["damage_per_click"].Value;
+				JSONNode damageMultiplierFire = player["damage_multiplier_fire"].Value;
+				JSONNode damageMultiplierCrit = player["damage_multiplier_crit"].Value;
+				JSONNode critPercentage = player["crit_percentage"].Value;
+				JSONNode lootChance = player["loot_chance"].Value;
+
+				if (hp != null) this.tuningData.Player.Hp = Decimal.Parse(hp.Value.ToUpperInvariant(), System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture);
+				if (dps != null) this.tuningData.Player.Dps = Decimal.Parse(dps.Value.ToUpperInvariant(), System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture);
+				if (damagePerClick != null) this.tuningData.Player.DamagePerClick = Decimal.Parse(damagePerClick.Value.ToUpperInvariant(), System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture);
+				if (damageMultiplierFire != null) this.tuningData.Player.DamageMultiplierFire = Decimal.Parse(damageMultiplierFire.Value.ToUpperInvariant(), System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture);
+				if (damageMultiplierCrit != null) this.tuningData.Player.DamageMultiplierCrit = Decimal.Parse(damageMultiplierCrit.Value.ToUpperInvariant(), System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture);
+				if (critPercentage != null) this.tuningData.Player.CritPercentage = Decimal.Parse(critPercentage.Value.ToUpperInvariant(), System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture);
+				if (lootChance != null) this.tuningData.Player.LootChance = Decimal.Parse(lootChance.Value.ToUpperInvariant(), System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture);
+			}
+
+			JSONNode upgrades = tuningData["upgrades"];
+			if (upgrades != null)
+			{
+				foreach (KeyValuePair<string, JSONNode> upgrade in (upgrades as JSONClass))
+				{
+					int id = Convert.ToInt32(upgrade.Key, CultureInfo.InvariantCulture);
+					if (id < this.tuningData.Upgrades.Length)
+					{
+						JSONNode multiplier = upgrade.Value["multiplier"];
+						JSONNode type = upgrade.Value["type"];
+						JSONNode requiredUpgrade = upgrade.Value["required_upgrade"];
+						JSONNode requiredUpgradeLevel = upgrade.Value["required_upgrade_level"];
+
+						if (multiplier != null) this.tuningData.Upgrades[id].Multiplier = Decimal.Parse(multiplier.Value.ToUpperInvariant(), System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture);
+						if (type != null) this.tuningData.Upgrades[id].Type = (UpgradeType)Convert.ToInt32(type.Value, CultureInfo.InvariantCulture);
+						if (requiredUpgrade != null) this.tuningData.Upgrades[id].RequiredUpgrade = Convert.ToInt32(requiredUpgrade.Value, CultureInfo.InvariantCulture);
+						if (requiredUpgradeLevel != null) this.tuningData.Upgrades[id].RequiredUpgradeLevel = Convert.ToInt32(requiredUpgradeLevel.Value, CultureInfo.InvariantCulture);
+					}
+				}
+			}
+
+			printTuningData();
+			waitForTuningData = false;
 		}
 
 		private JsonCallback resultPlayerNamesDelegate;
@@ -492,6 +765,7 @@ namespace MonsterGUI
 				}
 			}
 			playerGroup.Text = "Players (" + playerList.Items.Count + ")";
+			this.Text = "MonsterGUI.exe" + (string.IsNullOrEmpty(personaName) ? "" : (" - " + personaName));
 		}
 
 		private JsonCallback resultGameDataDelegate;
@@ -523,8 +797,10 @@ namespace MonsterGUI
 					{
 						JSONNode activePlayerAbilityGoldPerClick = lane["active_player_ability_gold_per_click"];
 						JSONNode enemies = lane["enemies"];
+						JSONNode element = lane["element"];
 
-						if (activePlayerAbilityGoldPerClick != null) this.gameData.Lanes[i].ActivePlayerAbilityGoldPerClick = Convert.ToDecimal(activePlayerAbilityGoldPerClick.Value, CultureInfo.InvariantCulture);
+						if (activePlayerAbilityGoldPerClick != null) this.gameData.Lanes[i].ActivePlayerAbilityGoldPerClick = Decimal.Parse(activePlayerAbilityGoldPerClick.Value.ToUpperInvariant(), System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture);
+						if (element != null) this.gameData.Lanes[i].Element = (UpgradeOption)(Convert.ToInt32(element.Value, CultureInfo.InvariantCulture) - 1 + (int)UpgradeOption.ElementalFire);
 
 						if (enemies != null)
 						{
@@ -535,8 +811,8 @@ namespace MonsterGUI
 								JSONNode maxHp = enemy["max_hp"];
 								JSONNode type = enemy["type"];
 
-								if (hp != null) this.gameData.Lanes[i].Enemies[j].Hp = Convert.ToDecimal(hp.Value, CultureInfo.InvariantCulture);
-								if (maxHp != null) this.gameData.Lanes[i].Enemies[j].MaxHp = Convert.ToDecimal(maxHp.Value, CultureInfo.InvariantCulture);
+								if (hp != null) this.gameData.Lanes[i].Enemies[j].Hp = Decimal.Parse(hp.Value.ToUpperInvariant(), System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture);
+								if (maxHp != null) this.gameData.Lanes[i].Enemies[j].MaxHp = Decimal.Parse(maxHp.Value.ToUpperInvariant(), System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture);
 								if (type != null) this.gameData.Lanes[i].Enemies[j].Type = (EnemyType)Convert.ToInt32(type.Value, CultureInfo.InvariantCulture);
 
 								++j;
@@ -612,6 +888,7 @@ namespace MonsterGUI
 			{
 				bossLaneText.Text = "";
 			}
+			printGameTree();
 		}
 
 		/// <summary>
@@ -630,7 +907,7 @@ namespace MonsterGUI
 				int startTick = System.Environment.TickCount;
 				try
 				{
-					if (getSteamId)
+					if (getSteamId && !string.IsNullOrEmpty(accessToken))
 					{
 						StringBuilder url = new StringBuilder();
 						url.Append("https://steamapi-a.akamaihd.net/ISteamUserOAuth/GetTokenDetails/v1/?access_token=");
@@ -640,6 +917,22 @@ namespace MonsterGUI
 						JSONNode json = JSON.Parse(res);
 						if (!exiting) Invoke(resultTokenDetailsDelegate, json);
 						getSteamId = false;
+					}
+					else if (getTuningData && !string.IsNullOrEmpty(accessToken))
+					{
+						// https://steamapi-a.akamaihd.net/ITowerAttackMiniGameService/GetTuningData/v0001/?game_type=1&gameid=41671&access_token=***
+						StringBuilder url = new StringBuilder();
+						url.Append("https://");
+						url.Append(host);
+						url.Append("GetTuningData/v0001/?game_type=1&gameid=");
+						url.Append(room);
+						url.Append("&access_token=");
+						url.Append(accessToken);
+						Invoke(enableDelegate, getStateStatus, true);
+						string res = wc.DownloadString(url.ToString());
+						JSONNode json = JSON.Parse(res);
+						if (!exiting) Invoke(resultTuningDataDelegate, json);
+						getTuningData = false;
 					}
 					else if (getPlayerNames)
 					{
